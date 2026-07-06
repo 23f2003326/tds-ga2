@@ -119,9 +119,75 @@ def to_bool(value):
     return str(value).lower() in ["true", "1", "yes", "on"]
 
 
+
 @app.get("/effective-config")
 def effective_config(set: List[str] = Query(default=[])):
 
+    config = DEFAULTS.copy()
+
+    # 1. YAML
+    if os.path.exists("config.development.yaml"):
+        with open("config.development.yaml", "r") as f:
+            data = yaml.safe_load(f)
+            if data:
+                config.update(data)
+
+    # 2. .env values (read directly)
+    dotenv = {}
+    if os.path.exists(".env"):
+        with open(".env") as f:
+            for line in f:
+                line = line.strip()
+                if not line or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                dotenv[k] = v
+
+    if "APP_PORT" in dotenv:
+        config["port"] = int(dotenv["APP_PORT"])
+
+    if "NUM_WORKERS" in dotenv:
+        config["workers"] = int(dotenv["NUM_WORKERS"])
+
+    if "APP_API_KEY" in dotenv:
+        config["api_key"] = dotenv["APP_API_KEY"]
+
+    # 3. OS Environment (override .env)
+    env_map = {
+        "APP_PORT": ("port", int),
+        "APP_WORKERS": ("workers", int),
+        "APP_LOG_LEVEL": ("log_level", str),
+        "APP_API_KEY": ("api_key", str),
+    }
+
+    for env_key, (cfg_key, caster) in env_map.items():
+        if env_key in os.environ:
+            config[cfg_key] = caster(os.environ[env_key])
+
+    # 4. CLI overrides
+    for item in set:
+        if "=" not in item:
+            continue
+
+        key, value = item.split("=", 1)
+
+        if key in ("port", "workers"):
+            config[key] = int(value)
+
+        elif key == "debug":
+            config[key] = value.strip().lower() in (
+                "true",
+                "1",
+                "yes",
+                "on",
+            )
+
+        else:
+            config[key] = value
+
+    config["api_key"] = "****"
+
+    return config
     config = DEFAULTS.copy()
 
     # 1. YAML
