@@ -36,12 +36,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[ALLOWED_ORIGIN],
     allow_credentials=False,
-    allow_methods=["*"],
+    allow_methods=["GET", "OPTIONS"],
     allow_headers=["*"],
 )
-
 
 @app.middleware("http")
 async def process_time(request: Request, call_next):
@@ -125,23 +124,22 @@ def effective_config(set: List[str] = Query(default=[])):
 
     config = DEFAULTS.copy()
 
-    # 1. YAML
+    # YAML
     if os.path.exists("config.development.yaml"):
         with open("config.development.yaml", "r") as f:
             data = yaml.safe_load(f)
             if data:
                 config.update(data)
 
-    # 2. .env values (read directly)
+    # .env
     dotenv = {}
     if os.path.exists(".env"):
         with open(".env") as f:
             for line in f:
                 line = line.strip()
-                if not line or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                dotenv[k] = v
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    dotenv[k] = v
 
     if "APP_PORT" in dotenv:
         config["port"] = int(dotenv["APP_PORT"])
@@ -152,7 +150,7 @@ def effective_config(set: List[str] = Query(default=[])):
     if "APP_API_KEY" in dotenv:
         config["api_key"] = dotenv["APP_API_KEY"]
 
-    # 3. OS Environment (override .env)
+    # OS Environment
     env_map = {
         "APP_PORT": ("port", int),
         "APP_WORKERS": ("workers", int),
@@ -164,7 +162,7 @@ def effective_config(set: List[str] = Query(default=[])):
         if env_key in os.environ:
             config[cfg_key] = caster(os.environ[env_key])
 
-    # 4. CLI overrides
+    # CLI
     for item in set:
         if "=" not in item:
             continue
@@ -175,12 +173,7 @@ def effective_config(set: List[str] = Query(default=[])):
             config[key] = int(value)
 
         elif key == "debug":
-            config[key] = value.strip().lower() in (
-                "true",
-                "1",
-                "yes",
-                "on",
-            )
+            config["debug"] = value.lower() in ("true", "1", "yes", "on")
 
         else:
             config[key] = value
